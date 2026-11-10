@@ -41,6 +41,9 @@ All limits are plain macros with ``#ifndef`` guards, so they can be overridden f
     * - ``WEBSERVER_MAX_HEADER_WAIT``
       - 10000 ms
       - The request line and headers together took too long; answered with ``408 Request Timeout``. Set to ``0`` to disable.
+    * - ``WEBSERVER_DIGEST_NONCE_TTL``
+      - 300000 ms
+      - How long a signed Digest nonce stays valid for any client. Set to ``0`` to disable expiry. See `Authentication`_.
     * - ``WEBSERVER_MAX_QUERY_ARGS``
       - 256
       - Further arguments are dropped, but the request is still handled. See `Query and Form Arguments`_.
@@ -68,6 +71,33 @@ value matched the configured user name was accepted, including a bare ``Authoriz
 
 Sketches that pass their own callback to ``authenticate()`` are unaffected: the callback still receives every scheme, including
 ``OTHER_AUTH``, and decides on its own.
+
+Digest authentication no longer keeps a single nonce for the whole server. Each 401 issues a signed nonce that stays valid for
+``WEBSERVER_DIGEST_NONCE_TTL`` (five minutes by default), so several browsers or scripts can stay logged in at the same time. A request whose
+digest response is correct for an expired or unknown nonce is answered with ``stale=true``, as required by :rfc:`7616`, so the client retries
+silently instead of showing the login dialog again.
+
+The digest ``uri`` parameter is compared with the full request-target, including any query string. A captured ``Authorization`` header for one
+path or query is no longer accepted for a different request-target.
+
+Removing Digest Authentication
+******************************
+
+Digest authentication shares its entry points with Basic authentication, so a Basic-only application links the MD5, SHA-2 and HMAC code used to
+verify Digest credentials even though it never answers a Digest challenge. Set ``WEBSERVER_DIGEST_AUTH`` to ``0`` in ``build_opt.h`` or in the
+platform build flags to compile that code out:
+
+.. code-block:: none
+
+    -DWEBSERVER_DIGEST_AUTH=0
+
+Basic authentication and custom ``authenticate()`` callbacks that handle ``OTHER_AUTH`` continue to work unchanged. An ``Authorization``
+header using Digest is rejected. ``requestAuthentication(DIGEST_AUTH)`` does not fall back to a ``Basic`` challenge because that would
+invite the client to send credentials in the clear using a scheme that the sketch did not request. Instead, it logs an error and responds
+with ``403 Forbidden``, so a build that still selects Digest is denied rather than authenticated with a weaker scheme. The saving is
+several kilobytes of flash (about 9 KB in a large application, around 11 KB for a minimal ``WebServer`` sketch on an ESP32-S3).
+
+The default is ``1``, which keeps the current behavior. The switch removes Digest support; it does not make the nonce signing optional.
 
 serveStatic()
 *************
@@ -240,5 +270,6 @@ Every limit can be raised, and the request-target check can be disabled entirely
     Raising these limits restores the memory-exhaustion behavior they were added to prevent. Prefer raising a single limit to the value the
     application actually needs.
 
-The dot-segment rejection in ``serveStatic()``, the authentication scheme check and the per-request state reset are not configurable, because
-each of them fixes a security issue rather than imposing a limit.
+The dot-segment rejection in ``serveStatic()``, the authentication scheme check, the Digest nonce signing and the per-request state reset are
+not configurable, because each of them fixes a security issue rather than imposing a limit. ``WEBSERVER_DIGEST_AUTH=0`` removes Digest
+authentication entirely; it does not weaken Basic authentication or make the remaining code paths configurable.

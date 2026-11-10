@@ -37,14 +37,15 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 2
 
       - name: Get changed upload-related files
         if: github.event_name == 'pull_request'
         id: changed
-        uses: tj-actions/changed-files@2f7c5bfce28377bc069a65ba478de0a74aa0ca32 # v46.0.1
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files_yaml: |
             boards:
@@ -107,10 +108,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.0.4
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.x"
 
@@ -122,18 +125,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Get libs cache
+        id: libs-cache
         if: runner.os == 'Linux'
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: libs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package/package_esp32_index.template.json', 'tools/get.py') }}
           path: |
-            ./tools/dist
             ./tools/esp32-arduino-libs
             ./tools/esptool
             ./tools/mk*
             ./tools/openocd-esp32
             ./tools/riscv32-*
             ./tools/xtensa-*
+
+      - name: Skip tool verification on libs cache hit
+        if: runner.os == 'Linux' && steps.libs-cache.outputs.cache-hit == 'true'
+        run: echo "ESP32_LIBS_CACHE_HIT=1" >> "$GITHUB_ENV"
 
       - name: Run mock upload tests
         shell: bash
